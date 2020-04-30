@@ -1,19 +1,21 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:ui';
+
+import 'package:flutter/widgets.dart';
 
 typedef Future<dynamic> EventHandler(String res);
 typedef Future<dynamic> EventHandlerMap(Map<String, dynamic> event);
 
 class Getuiflut {
-
   static const MethodChannel _channel = const MethodChannel('getuiflut');
 
   EventHandler _onReceiveClientId;
   EventHandlerMap _onReceiveMessageData;
+  EventHandlerMap _onBackgroundReceiveMessageData;
   EventHandlerMap _onNotificationMessageArrived;
   EventHandlerMap _onNotificationMessageClicked;
-
 
   // deviceToken
   EventHandler _onRegisterDeviceToken;
@@ -28,15 +30,32 @@ class Getuiflut {
   // ios 收到VOIP消息
   EventHandlerMap _onReceiveVoipPayLoad;
 
-
   static Future<String> get platformVersion async {
     final String version = await _channel.invokeMethod('getPlatformVersion');
     print(version);
     return version;
   }
 
-  static Future<void> get initGetuiSdk async {
-    await _channel.invokeMethod('initGetuiPush');
+  Future<void> get initGetuiSdk async {
+    final CallbackHandle backgroundMessageHandle =
+        PluginUtilities.getCallbackHandle(_onBackgroundReceiveMessageData);
+    final CallbackHandle backgroundSetupHandle =
+        PluginUtilities.getCallbackHandle(_fcmSetupBackgroundChannel);
+    if (backgroundMessageHandle == null) {
+      throw ArgumentError(
+        '''Failed to setup background message handler! `onBackgroundMessage`
+          should be a TOP-LEVEL OR STATIC FUNCTION and should NOT be tied to a
+          class or an anonymous function.''',
+      );
+    }
+
+    _channel.invokeMethod(
+      'initGetuiPush',
+      <String, dynamic>{
+        'setupHandle': backgroundSetupHandle.toRawHandle(),
+        'backgroundHandle': backgroundMessageHandle.toRawHandle()
+      },
+    );
   }
 
   static Future<String> get getClientId async {
@@ -49,57 +68,57 @@ class Getuiflut {
   }
 
   void stopPush() {
-    if(Platform.isAndroid) {
-       _channel.invokeMethod('stopPush');
+    if (Platform.isAndroid) {
+      _channel.invokeMethod('stopPush');
     }
   }
 
   void onActivityCreate() {
     _channel.invokeMethod('onActivityCreate');
   }
-  
-  void bindAlias(String alias,String sn) {
-    if(Platform.isAndroid) {
-      _channel.invokeMethod('bindAlias',<String,dynamic>{'alias':alias});
+
+  void bindAlias(String alias, String sn) {
+    if (Platform.isAndroid) {
+      _channel.invokeMethod('bindAlias', <String, dynamic>{'alias': alias});
     } else {
-      _channel.invokeMethod('bindAlias',<String,dynamic>{'alias':alias,'aSn':sn});
+      _channel.invokeMethod(
+          'bindAlias', <String, dynamic>{'alias': alias, 'aSn': sn});
     }
   }
 
-  void unbindAlias(String alias,String sn,bool isSelf) {
-    if(Platform.isAndroid) {
-      _channel.invokeMethod('unbindAlias',<String,dynamic>{'alias':alias});
+  void unbindAlias(String alias, String sn, bool isSelf) {
+    if (Platform.isAndroid) {
+      _channel.invokeMethod('unbindAlias', <String, dynamic>{'alias': alias});
     } else {
-      _channel.invokeMethod('unbindAlias',<String,dynamic>{'alias':alias,'aSn':sn,'isSelf':isSelf});
+      _channel.invokeMethod('unbindAlias',
+          <String, dynamic>{'alias': alias, 'aSn': sn, 'isSelf': isSelf});
     }
   }
 
   void setBadge(int badge) {
-    if(Platform.isAndroid) {
-
+    if (Platform.isAndroid) {
     } else {
-      _channel.invokeMethod('setBadge',<String,dynamic>{'badge':badge});
+      _channel.invokeMethod('setBadge', <String, dynamic>{'badge': badge});
     }
   }
 
   void resetBadge() {
-    if(Platform.isAndroid) {
-
+    if (Platform.isAndroid) {
     } else {
       _channel.invokeMethod('resetBadge');
     }
   }
 
   void setTag(List<dynamic> tags) {
-    _channel.invokeMethod('setTag',<String,dynamic>{'tags':tags});
+    _channel.invokeMethod('setTag', <String, dynamic>{'tags': tags});
   }
 
   void addEventHandler({
     EventHandler onReceiveClientId,
     EventHandlerMap onReceiveMessageData,
+    EventHandlerMap onBackgroundReceiveMessageData,
     EventHandlerMap onNotificationMessageArrived,
     EventHandlerMap onNotificationMessageClicked,
-
 
     //deviceToken
     EventHandler onRegisterDeviceToken,
@@ -113,11 +132,12 @@ class Getuiflut {
     EventHandler onAppLinkPayload,
     // ios 收到VOIP消息
     EventHandlerMap onReceiveVoipPayLoad,
-  }){
+  }) {
     _onReceiveClientId = onReceiveClientId;
     _onRegisterDeviceToken = onRegisterDeviceToken;
     _onRegisterVoipToken = onRegisterVoipToken;
     _onReceiveMessageData = onReceiveMessageData;
+    _onBackgroundReceiveMessageData = onBackgroundReceiveMessageData;
     _onNotificationMessageArrived = onNotificationMessageArrived;
     _onNotificationMessageClicked = onNotificationMessageClicked;
 
@@ -129,7 +149,7 @@ class Getuiflut {
   }
 
   Future<Null> _handleMethod(MethodCall call) async {
-    switch(call.method) {
+    switch (call.method) {
       case "onReceiveClientId":
         print('onReceiveClientId' + call.arguments);
         return _onReceiveClientId(call.arguments);
@@ -137,15 +157,18 @@ class Getuiflut {
       case "onReceiveMessageData":
         return _onReceiveMessageData(call.arguments.cast<String, dynamic>());
       case "onNotificationMessageArrived":
-        return _onNotificationMessageArrived(call.arguments.cast<String, dynamic>());
+        return _onNotificationMessageArrived(
+            call.arguments.cast<String, dynamic>());
       case "onNotificationMessageClicked":
-        return _onNotificationMessageClicked(call.arguments.cast<String, dynamic>());
+        return _onNotificationMessageClicked(
+            call.arguments.cast<String, dynamic>());
       case "onRegisterDeviceToken":
         return _onRegisterDeviceToken(call.arguments);
       case "onReceivePayload":
         return _onReceivePayload(call.arguments.cast<String, dynamic>());
       case "onReceiveNotificationResponse":
-        return _onReceiveNotificationResponse(call.arguments.cast<String, dynamic>());
+        return _onReceiveNotificationResponse(
+            call.arguments.cast<String, dynamic>());
       case "onAppLinkPayload":
         return _onAppLinkPayload(call.arguments);
       case "onRegisterVoipToken":
@@ -163,11 +186,38 @@ class Getuiflut {
     String appId,
     String appKey,
     String appSecret,
-
   }) {
-    _channel.invokeMethod('startSdk',{'appId':appId, 'appKey':appKey, 'appSecret':appSecret});
+    _channel.invokeMethod(
+        'startSdk', {'appId': appId, 'appKey': appKey, 'appSecret': appSecret});
   }
+}
 
+void _fcmSetupBackgroundChannel() async {
+  MethodChannel backgroundChannel =
+      const MethodChannel('com.getui.getuiflut/getui_messaging_background');
+  // Setup Flutter state needed for MethodChannels.
+  WidgetsFlutterBinding.ensureInitialized();
 
+  // This is where the magic happens and we handle background events from the
+  // native portion of the plugin.
+  backgroundChannel.setMethodCallHandler((MethodCall call) async {
+    if (call.method == 'handleBackgroundMessage') {
+      try {
+        final CallbackHandle handle =
+            CallbackHandle.fromRawHandle(call.arguments['handle']);
+        final Function handlerFunction =
+            PluginUtilities.getCallbackFromHandle(handle);
+        await handlerFunction(
+            Map<String, dynamic>.from(call.arguments['message']));
+      } catch (e) {
+        print('Unable to handle incoming background message.');
+        print('$e');
+      }
+      return Future<void>.value();
+    }
+  });
 
+  // Once we've finished initializing, let the native portion of the plugin
+  // know that it can start scheduling handling messages.
+  backgroundChannel.invokeMethod<void>('GetuiService#initialized');
 }

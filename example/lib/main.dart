@@ -128,7 +128,7 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> initGetuiSdk() async {
     try {
-      Getuiflut.initGetuiSdk;
+      Getuiflut().initGetuiSdk;
     } catch(e) {
       e.toString();
     }
